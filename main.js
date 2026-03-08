@@ -71,7 +71,10 @@ let stateTransition = 0; // 0..1 for smooth transitions
 let currentHue = STATE_COLORS.IDLE.h;
 
 // Text targets
-let textTargetPositions = null;
+let textTargetPositionsIlu = null;
+let textTargetPositionsVictory = null;
+let activeTextTargets = null;
+
 
 // UI elements
 let gestureIconEl, gestureLabelEl, stateTextEl, stateDotEl;
@@ -94,8 +97,9 @@ async function init() {
 
     // Setup Three.js
     initThree();
-    generateTextTargets();
-
+    textTargetPositionsIlu = generateTextTargets("HAPPY WOMEN'S DAY", "VIDYA");
+    textTargetPositionsVictory = generateTextTargets("U LOOK BEAUTIFUL", "from Kush ;)");
+    
     // Start render loop
     clock = new THREE.Clock();
     animate();
@@ -293,7 +297,7 @@ function createBackgroundStars() {
 // ============================================================
 // 3D TEXT TARGET GENERATION
 // ============================================================
-function generateTextTargets() {
+function generateTextTargets(line1, line2) {
     // Use a high-res 2D canvas to render the message and sample points densely
     const canvas = document.createElement('canvas');
     canvas.width = 1024;
@@ -306,13 +310,15 @@ function generateTextTargets() {
     ctx.fillStyle = '#fff';
     ctx.textAlign = 'center';
 
-    // Line 1: "I LOVE YOU, ANANYA" — big and bold
+    // Line 1: Main message — big and bold
     ctx.font = 'bold 80px Inter, Arial, sans-serif';
-    ctx.fillText('I LOVE YOU, ANANYA', canvas.width / 2, 100);
+    ctx.fillText(line1, canvas.width / 2, 100);
 
-    // Line 2: "from Kush ;)" — small, centered below
-    ctx.font = 'bold 80px Inter, Arial, sans-serif';
-    ctx.fillText('from Kush ;)', canvas.width / 2, 200);
+    // Line 2: Small, centered below
+    if (line2) {
+        ctx.font = 'bold 80px Inter, Arial, sans-serif';
+        ctx.fillText(line2, canvas.width / 2, 200);
+    }
 
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const pixels = imageData.data;
@@ -335,7 +341,7 @@ function generateTextTargets() {
     }
 
     // Map to 3D positions and assign to particles
-    textTargetPositions = new Float32Array(PARTICLE_COUNT * 3);
+    const targets = new Float32Array(PARTICLE_COUNT * 3);
     const scaleX = 18 / canvas.width;
     const scaleY = 5 / canvas.height;
 
@@ -343,15 +349,17 @@ function generateTextTargets() {
         if (whitePixels.length > 0) {
             const pixel = whitePixels[i % whitePixels.length];
             // Tight randomness for crisp text with subtle 3D depth
-            textTargetPositions[i * 3] = (pixel.x - canvas.width / 2) * scaleX + (Math.random() - 0.5) * 0.06;
-            textTargetPositions[i * 3 + 1] = -(pixel.y - canvas.height / 2) * scaleY + (Math.random() - 0.5) * 0.06;
-            textTargetPositions[i * 3 + 2] = (Math.random() - 0.5) * 0.3;
+            targets[i * 3] = (pixel.x - canvas.width / 2) * scaleX + (Math.random() - 0.5) * 0.06;
+            targets[i * 3 + 1] = -(pixel.y - canvas.height / 2) * scaleY + (Math.random() - 0.5) * 0.06;
+            targets[i * 3 + 2] = (Math.random() - 0.5) * 0.3;
         } else {
-            textTargetPositions[i * 3] = (Math.random() - 0.5) * 10;
-            textTargetPositions[i * 3 + 1] = (Math.random() - 0.5) * 4;
-            textTargetPositions[i * 3 + 2] = (Math.random() - 0.5) * 1;
+            targets[i * 3] = (Math.random() - 0.5) * 10;
+            targets[i * 3 + 1] = (Math.random() - 0.5) * 4;
+            targets[i * 3 + 2] = (Math.random() - 0.5) * 1;
         }
     }
+    
+    return targets;
 }
 
 // ============================================================
@@ -496,6 +504,11 @@ function detectGesture(landmarks) {
         return 'ilu';
     }
 
+    // Victory sign: index + middle extended, ring + pinky curled (thumb can be curled or slightly extended)
+    if (indexExtended && middleExtended && !ringExtended && !pinkyExtended) {
+        return 'victory';
+    }
+
     // Open palm: all fingers extended
     if (thumbExtended && indexExtended && middleExtended && ringExtended && pinkyExtended) {
         return 'palm';
@@ -572,19 +585,41 @@ function processGesture(gesture) {
             break;
         case STATE.FOLLOW:
             if (gesture === 'palm') transition(STATE.EXPLODE);
-            else if (gesture === 'ilu') transition(STATE.TEXT_FORM);
+            else if (gesture === 'ilu') {
+                activeTextTargets = textTargetPositionsIlu;
+                transition(STATE.TEXT_FORM);
+            }
+            else if (gesture === 'victory') {
+                activeTextTargets = textTargetPositionsVictory;
+                transition(STATE.TEXT_FORM);
+            }
             break;
         case STATE.EXPLODE:
             if (gesture === 'fist') transition(STATE.IMPLODE);
             break;
         case STATE.IMPLODE:
-            if (gesture === 'ilu') transition(STATE.TEXT_FORM);
+            if (gesture === 'ilu') {
+                activeTextTargets = textTargetPositionsIlu;
+                transition(STATE.TEXT_FORM);
+            }
+            else if (gesture === 'victory') {
+                activeTextTargets = textTargetPositionsVictory;
+                transition(STATE.TEXT_FORM);
+            }
             else if (gesture === 'palm') transition(STATE.EXPLODE);
             else if (gesture === 'fist' && stateTransition > 0.9) transition(STATE.FOLLOW);
             break;
         case STATE.TEXT_FORM:
             if (gesture === 'fist') transition(STATE.FOLLOW);
             else if (gesture === 'palm') transition(STATE.EXPLODE);
+            else if (gesture === 'ilu' && activeTextTargets !== textTargetPositionsIlu) {
+                activeTextTargets = textTargetPositionsIlu;
+                transition(STATE.TEXT_FORM);
+            }
+            else if (gesture === 'victory' && activeTextTargets !== textTargetPositionsVictory) {
+                activeTextTargets = textTargetPositionsVictory;
+                transition(STATE.TEXT_FORM);
+            }
             break;
     }
 }
@@ -614,11 +649,12 @@ function transition(newState) {
 }
 
 function updateGestureUI(gesture) {
-    const icons = { fist: '✊', palm: '🖐️', ilu: '🤟', other: '🤚', none: '👋' };
+    const icons = { fist: '✊', palm: '🖐️', ilu: '🤟', victory: '✌️', other: '🤚', none: '👋' };
     const labels = {
         fist: 'Fist detected',
         palm: 'Open palm detected',
-        ilu: 'I Love You sign!',
+        ilu: 'Rock sign!',
+        victory: 'Victory sign!',
         other: 'Hand detected',
         none: 'Waiting for hand...'
     };
@@ -750,13 +786,13 @@ function updateParticles(delta, elapsed) {
 
             case STATE.TEXT_FORM:
                 // Lerp to text target positions + hand offset
-                if (textTargetPositions) {
+                if (activeTextTargets) {
                     const offsetX = handDetected ? handPosition.x * 0.3 : 0;
                     const offsetY = handDetected ? handPosition.y * 0.3 : 0;
 
-                    const tx = textTargetPositions[i3] + offsetX;
-                    const ty = textTargetPositions[i3 + 1] + offsetY;
-                    const tz = textTargetPositions[i3 + 2];
+                    const tx = activeTextTargets[i3] + offsetX;
+                    const ty = activeTextTargets[i3 + 1] + offsetY;
+                    const tz = activeTextTargets[i3 + 2];
 
                     particlePositions[i3] += (tx - particlePositions[i3]) * TEXT_LERP_SPEED;
                     particlePositions[i3 + 1] += (ty - particlePositions[i3 + 1]) * TEXT_LERP_SPEED;
